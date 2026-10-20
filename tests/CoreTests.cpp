@@ -1,7 +1,7 @@
 #include "Project.h"
 #include "Wav.h"
 #include "Oto.h"
-#include <QCoreApplication>
+#include <QGuiApplication>
 #include <QFile>
 #include <QTemporaryDir>
 #include <QtEndian>
@@ -48,7 +48,7 @@ bool synthesize(const QString &path) {
 }
 
 int main(int argc, char **argv) {
-    QCoreApplication app(argc, argv);
+    QGuiApplication app(argc, argv);
     QTemporaryDir temp;
     if (!temp.isValid()) return 1;
     const QString source = temp.filePath("input.wav");

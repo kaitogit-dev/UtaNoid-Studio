@@ -50,7 +50,7 @@ Wav Wav::load(const QString &path) {
         wav.error = "Unsupported WAV encoding";
         return wav;
     }
-    const int frames = std::min(dataSize, bytes.size() - dataStart) / blockAlign;
+    const int frames = std::min(dataSize, int(bytes.size()) - dataStart) / blockAlign;
     if (frames == 0) { wav.error = "WAV contains no samples"; return wav; }
     wav.sampleRate = int(rate);
     wav.samples.resize(frames);
