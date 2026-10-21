@@ -121,6 +121,7 @@ bool Project::save(QString *error) const {
         entry["overlap"] = s.oto.overlap;
         entry["confidence"] = s.oto.confidence;
         entry["analyzed"] = s.oto.analyzed;
+        entry["engine"] = s.oto.engine;
         items.append(entry);
     }
     object["samples"] = items;
@@ -157,6 +158,7 @@ bool Project::open(const QString &path, QString *error) {
         sample.oto.overlap = entry.value("overlap").toDouble();
         sample.oto.confidence = entry.value("confidence").toDouble();
         sample.oto.analyzed = entry.value("analyzed").toBool();
+        sample.oto.engine = entry.value("engine").toString();
         parsed.append(sample);
     }
     if (parsed.isEmpty()) { if (error) *error = "No samples in project"; return false; }
@@ -186,7 +188,7 @@ bool Project::importAudio(int index, const QString &source, QString *error) {
             return false;
         }
     }
-    samples[index].oto = OtoAnalyzer::analyze(wav, samples[index].alias);
+    samples[index].oto = {};
     return save(error);
 }
 

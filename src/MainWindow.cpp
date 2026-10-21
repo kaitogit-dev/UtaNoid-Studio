@@ -1,4 +1,5 @@
 #include "MainWindow.h"
+#include "AiOto.h"
 #include "Waveform.h"
 #include <QAudioDevice>
 #include <QComboBox>
@@ -8,6 +9,9 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFrame>
+#include <QFutureWatcher>
+#include <QProgressDialog>
+#include <QtConcurrent>
 #include <QHBoxLayout>
 #include <QInputDialog>
 #include <QLabel>
@@ -207,7 +211,7 @@ void MainWindow::buildUi() {
     auto *otoHeader = new QHBoxLayout;
     otoHeader->addWidget(heading("OTO"));
     otoHeader->addStretch();
-    auto *generate = action("Generate all", true);
+    auto *generate = action("Generate AI OTO", true);
     otoHeader->addWidget(generate);
     otoMain->addLayout(otoHeader);
     otoWave = new Waveform;
@@ -238,6 +242,7 @@ void MainWindow::buildUi() {
         const int index = otoList->currentRow();
         if (index < 0 || index >= project.samples.size()) return;
         project.samples[index].oto = oto;
+        project.samples[index].oto.engine = "manual";
         updateOtoFields();
         project.save();
     });
@@ -345,8 +350,10 @@ void MainWindow::updateOtoFields() {
     }
     updating = false;
     if (!available) otoStatus->setText("No recording");
-    else if (!o.analyzed) otoStatus->setText("Analysis unavailable · rerecord sample");
-    else otoStatus->setText(QString("Analysis confidence  %1%").arg(int(o.confidence * 100)));
+    else if (!o.analyzed) otoStatus->setText("Not aligned");
+    else if (o.engine == "mfa-japanese") otoStatus->setText("AI aligned");
+    else if (o.engine == "manual") otoStatus->setText("Manually edited");
+    else otoStatus->setText("Legacy timing");
     otoWave->setOto(o);
 }
 
@@ -360,6 +367,7 @@ void MainWindow::saveOtoFields() {
     o.preutterance = fields[2]->value();
     o.consonant = fields[3]->value();
     o.cutoff = fields[4]->value();
+    o.engine = "manual";
     otoWave->setOto(o);
     project.save();
 }
@@ -446,19 +454,49 @@ void MainWindow::playSample() {
 }
 
 void MainWindow::analyzeAll() {
-    int analyzed = 0, uncertain = 0;
+    if (project.root.isEmpty()) return;
+    QVector<AiInput> inputs;
     for (int i = 0; i < project.samples.size(); ++i) {
         if (!project.hasAudio(i)) continue;
-        const Wav wav = Wav::load(project.audioFile(i));
-        Oto result = OtoAnalyzer::analyze(wav, project.samples[i].alias);
-        project.samples[i].oto = result;
-        if (result.analyzed && result.confidence >= 0.6) ++analyzed;
-        else ++uncertain;
+        const Sample &sample = project.samples[i];
+        inputs.append({sample.alias, sample.kana, project.audioFile(i)});
     }
-    QString error;
-    if (!project.save(&error)) showError(error);
-    refresh();
-    otoStatus->setText(QString("%1 analyzed · %2 need a better take").arg(analyzed).arg(uncertain));
+    if (inputs.isEmpty()) return;
+    auto *progress = new QProgressDialog("Aligning voicebank", QString(), 0, 0, this);
+    progress->setCancelButton(nullptr);
+    progress->setMinimumDuration(0);
+    progress->setWindowModality(Qt::ApplicationModal);
+    progress->setWindowFlags(Qt::Dialog | Qt::CustomizeWindowHint | Qt::WindowTitleHint);
+    progress->show();
+    const QString root = project.root;
+    auto *watcher = new QFutureWatcher<AiBatch>(this);
+    connect(watcher, &QFutureWatcher<AiBatch>::finished, this, [this, watcher, progress, root] {
+        progress->close();
+        progress->deleteLater();
+        const AiBatch batch = watcher->result();
+        watcher->deleteLater();
+        if (project.root != root) return;
+        if (!batch.error.isEmpty()) {
+            showError(batch.error);
+            return;
+        }
+        int aligned = 0;
+        int rejected = 0;
+        for (const AiResult &item : batch.results) {
+            for (Sample &sample : project.samples) {
+                if (sample.alias != item.alias) continue;
+                sample.oto = item.oto;
+                if (item.oto.analyzed) ++aligned;
+                else ++rejected;
+                break;
+            }
+        }
+        QString error;
+        if (!project.save(&error)) showError(error);
+        refresh();
+        otoStatus->setText(QString("%1 aligned · %2 rejected").arg(aligned).arg(rejected));
+    });
+    watcher->setFuture(QtConcurrent::run([inputs] { return AiOto::generate(inputs); }));
 }
 
 void MainWindow::exportVoicebank() {

@@ -1,6 +1,7 @@
 #include "Project.h"
 #include "Wav.h"
 #include "Oto.h"
+#include "AiOto.h"
 #include <QGuiApplication>
 #include <QFile>
 #include <QTemporaryDir>
@@ -55,12 +56,35 @@ int main(int argc, char **argv) {
     if (!synthesize(source)) return 2;
     const Wav wav = Wav::load(source);
     if (!wav.valid() || wav.sampleRate != 24000 || std::abs(wav.durationMs() - 1000) > 1) return 3;
+    const QByteArray grid = R"(File type = "ooTextFile"
+Object class = "TextGrid"
+item [1]:
+    class = "IntervalTier"
+    name = "phones"
+    intervals [1]:
+        xmin = 0.0
+        xmax = 0.12
+        text = "sil"
+    intervals [2]:
+        xmin = 0.12
+        xmax = 0.78
+        text = "a"
+    intervals [3]:
+        xmin = 0.78
+        xmax = 1.0
+        text = "sil"
+)";
+    const Oto ai = AiOto::fromTextGrid(grid, wav, "a");
+    if (!ai.analyzed || ai.engine != "mfa-japanese" || !OtoAnalyzer::valid(ai, wav.durationMs())) return 12;
+    if (AiOto::fromTextGrid("invalid", wav, "ka").analyzed) return 13;
     const Oto result = OtoAnalyzer::analyze(wav, "a");
     if (!result.analyzed || !OtoAnalyzer::valid(result, wav.durationMs())) return 4;
     Project project;
     QString error;
     if (!project.create(temp.path(), "Singer", &error) || project.samples.size() < 90) return 5;
     if (!project.importAudio(0, source, &error) || project.recordedCount() != 1) return 6;
+    project.samples[0].oto = result;
+    if (!project.save(&error)) return 11;
     Project restored;
     if (!restored.open(project.projectFile(), &error) || restored.recordedCount() != 1) return 7;
     const QString exportPath = temp.filePath("output");

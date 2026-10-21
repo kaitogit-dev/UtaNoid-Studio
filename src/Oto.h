@@ -10,6 +10,7 @@ struct Oto {
     double overlap = 0;
     double confidence = 0;
     bool analyzed = false;
+    QString engine;
 };
 
 class OtoAnalyzer {
