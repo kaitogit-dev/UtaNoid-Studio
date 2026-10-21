@@ -10,6 +10,7 @@
 #include <QProcess>
 #include <QRegularExpression>
 #include <QStandardPaths>
+#include <QStringList>
 #include <QTemporaryDir>
 #include <QUrl>
 #include <algorithm>
@@ -187,7 +188,7 @@ QString aiExecutable(QString *error) {
     }
     if (!QFileInfo::exists(mfa)) {
         if (!run(conda, {"create", "--prefix", env, "--channel", "conda-forge", "--yes",
-                         "montreal-forced-aligner"}, error)) return {};
+                         "montreal-forced-aligner", "spacy", "sudachipy", "sudachidict-core"}, error)) return {};
     }
     for (const QString &type : {"acoustic", "dictionary", "g2p"}) {
         const QString marker = base + "/ready-" + type;
